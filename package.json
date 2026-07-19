@@ -1,0 +1,30 @@
+{
+  "name": "intent-engine",
+  "version": "1.0.0",
+  "description": "AI-powered intent extraction library thact converts natrual language input into structured developer-defined data.",
+  "keywords": [
+    "Ai",
+    "Intent",
+    "search",
+    "semantic-search",
+    "typscript",
+    "react",
+    "LLM",
+    "natriual-languae-processing"
+  ],
+  "homepage": "https://github.com/Dimethyl-tryptamine/Intent-engine#readme",
+  "bugs": {
+    "url": "https://github.com/Dimethyl-tryptamine/Intent-engine/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dimethyl-tryptamine/Intent-engine.git"
+  },
+  "license": "MIT",
+  "author": "Bryan Reyes",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
