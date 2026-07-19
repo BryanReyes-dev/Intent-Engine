@@ -1,4 +1,4 @@
-import { IntentSchema,IntentResult } from "./types";
+import type { IntentSchema,IntentResult } from "./types.js";
 
 export class IntentEngine {
     async ExtractIntent(Schema: IntentSchema, Input: string): Promise<IntentResult> {
