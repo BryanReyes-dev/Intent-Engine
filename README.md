@@ -144,6 +144,10 @@ Future support may include:
 
 The core architecture is currently being designed.
 
+## Agent Files
+
+The `agent-files/` directory contains documentation for AI coding agents and is separate from this human-facing README and the library source. `AGENTS.md` contains agent instructions, `ARCHITECTURE.md` records finalized architecture, `Agents_Context.md` stores short-term working context, and `CLAUDE.md` provides the Claude entry point.
+
 ## Contributing
 
 Contributions, ideas, and discussions are welcome.
