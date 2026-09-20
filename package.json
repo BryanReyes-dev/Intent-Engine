@@ -1,14 +1,15 @@
 {
   "name": "intent-engine",
   "version": "0.2.0",
-  "description": "A schema-driven TypeScript library for extracting structured intent from natural-language input.",
+  "description": "A schema-driven TypeScript library for mapping natural-language intent to canonical application values.",
   "type": "module",
   "keywords": [
     "ai",
     "intent",
-    "semantic-search",
+    "intent-mapping",
     "typescript",
     "llm",
+    "structured-output",
     "natural-language-processing"
   ],
   "homepage": "https://github.com/BryanReyes-dev/Intent-engine#readme",
@@ -40,7 +41,7 @@
     "test": "npm run test:unit",
     "test:unit": "npm run build && node --test tests/unit/intent-engine.test.mjs",
     "test:ollama": "npm run build && node --test tests/integration/ollama.test.mjs",
-    "check": "npm run build && npm pack --dry-run",
+    "check": "npm test && npm pack --dry-run",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
