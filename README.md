@@ -1,86 +1,194 @@
 # Intent Engine
 
-A schema-driven TypeScript library for extracting structured intent from natural-language input.
+A schema-driven TypeScript library for mapping natural-language intent to canonical application values.
 
 ## Status
 
-**0.1.0 — publishable baseline**
+**0.2.0 — schema/value mapping release**
 
-Intent Engine currently provides:
+Intent Engine provides:
 
-- A provider-agnostic intent extraction engine.
-- A public `IntentProvider` abstraction.
-- An OpenAI-compatible provider.
-- Automatic conversion of `IntentSchema` into a JSON Schema for structured model output.
+- A provider-agnostic intent engine.
+- A schema where each field describes a dimension and can optionally define allowed canonical values.
+- Natural-language interpretation through an inference provider.
+- Canonical value mapping when allowed values are supplied.
+- Open-ended values when a field does not define allowed values.
+- Evidence/source text and provider-generated confidence for every field.
+- Automatic JSON Schema generation for structured model output.
 - Runtime validation of provider results.
 - TypeScript declarations and an ESM package build.
 
-The package has been verified to:
-
-- Build successfully from source.
-- Produce a valid npm package archive.
-- Load from a separate consumer project using plain HTML, CSS, and JavaScript.
-- Perform real extraction through a local Ollama instance using an OpenAI-compatible endpoint.
-- Pass the returned result through the engine's runtime validation.
-
-The package does **not** install, bundle, start, or manage an AI model runtime. The application chooses and configures the inference source through an `IntentProvider`.
+The repository also contains unit tests and a real Ollama integration test. Test files are kept in the Git repository and are not included in the published npm package.
 
 ## Core concept
 
-Developers define the dimensions that matter to their application:
+A developer defines the dimensions that matter to the application.
+
+The `field` describes **what the dimension means**.
+
+The optional `values` array defines the **canonical values the model is allowed to choose from**.
+
+When `values` is omitted, the field is open-ended and the provider can infer a string, number, boolean, or `null` value.
 
 ```ts
 const schema = {
-  location: "Where does the user want to live?",
-  feeling: "How should the home feel?",
+  location: {
+    field: "Where does the user want to live?",
+    values: ["NYC", "Boston", "California"],
+  },
+  temperature: {
+    field: "What temperature do they prefer?",
+    values: [65, 70, 94],
+  },
+  reason: {
+    field: "Why are they looking?",
+  },
 };
 ```
 
-They create an inference provider and pass the schema and natural-language input to the engine:
+The application can then pass natural-language input:
+
+```ts
+const result = await engine.extract(
+  schema,
+  "I want somewhere cold, but still a busy city, preferably around Boston. I'm moving for work.",
+);
+```
+
+A provider can map natural language onto the application's canonical values:
+
+```ts
+{
+  location: {
+    value: "Boston",
+    source: ["preferably around Boston"],
+    confidence: 1,
+  },
+  temperature: {
+    value: 65,
+    source: ["I want somewhere cold"],
+    confidence: 0.8,
+  },
+  reason: {
+    value: "moving for work",
+    source: ["I'm moving for work."],
+    confidence: 1,
+  },
+}
+```
+
+This lets the application work with a stable vocabulary instead of handling every natural-language variation itself.
+
+For example:
+
+```text
+"around Boston"
+"near Boston"
+"the Boston area"
+```
+
+can all map to the canonical value:
+
+```text
+Boston
+```
+
+Likewise, a schema can map concepts such as:
+
+```text
+"cold"       -> 65
+"mild"       -> 70
+"really hot" -> 94
+```
+
+The mapping is performed by the configured inference provider. Intent Engine validates that a provider never returns a non-null value outside the schema's allowed values.
+
+## Result contract
+
+Every requested field returns:
+
+```ts
+type IntentResult = Record<string, {
+  value: string | number | boolean | null;
+  source: string[];
+  confidence: number;
+}>;
+```
+
+### `value`
+
+The interpreted value.
+
+When a field has `values`, the value must be one of those canonical values or `null`.
+
+When a field has no `values`, the value may be a string, number, boolean, or `null`.
+
+`null` represents insufficient information or no usable value.
+
+### `source`
+
+The relevant evidence from the user's input.
+
+The built-in integration test verifies that returned source entries are exact substrings of the original input.
+
+### `confidence`
+
+A provider-generated number from `0` to `1`.
+
+Intent Engine validates the range, but does not claim that confidence is a calibrated statistical probability.
+
+## Installation
+
+```bash
+npm install intent-engine
+```
+
+Intent Engine is published as an **ESM package**:
 
 ```ts
 import {
   IntentEngine,
   OpenAICompatibleProvider,
 } from "intent-engine";
+```
 
+The package has no runtime dependencies. TypeScript is used only as a development/build dependency.
+
+## Built-in provider
+
+### `OpenAICompatibleProvider`
+
+The built-in provider targets an OpenAI-compatible chat-completions endpoint.
+
+It sends requests to:
+
+```text
+POST {baseUrl}/chat/completions
+```
+
+and requires support for:
+
+- `model`
+- chat `messages`
+- `response_format.type = "json_schema"`
+- strict structured JSON output
+
+Example with a local Ollama endpoint:
+
+```ts
 const provider = new OpenAICompatibleProvider({
   baseUrl: "http://127.0.0.1:11434/v1",
   model: "gemma4:26b",
 });
 
 const engine = new IntentEngine(provider);
-
-const result = await engine.extract(
-  schema,
-  "I want to live somewhere close to the city, but I want my home to be quiet and peaceful.",
-);
-
-console.log(result);
 ```
 
-A provider-backed extraction returns one result for every requested schema dimension:
+The library does not install, start, download, or manage the model runtime.
 
-```ts
-{
-  location: {
-    source: ["close to the city"],
-    confidence: 1,
-  },
-  feeling: {
-    source: ["quiet and peaceful"],
-    confidence: 1,
-  },
-}
-```
+"OpenAI-compatible" refers to the API protocol. The model itself can be a local or hosted model as long as the endpoint supports the required structured-output behavior.
 
-The `source` field contains the text identified as relevant to the requested dimension.
-
-The `confidence` field is a provider-generated number between `0` and `1`. Intent Engine validates the range and numeric format, but does not currently claim that the value is a calibrated statistical probability.
-
-## Package architecture
-
-Intent Engine separates intent extraction from inference infrastructure:
+## Architecture
 
 ```text
 Application
@@ -96,152 +204,18 @@ Model
 
 The core engine:
 
-- accepts the developer's schema and input;
+- accepts the developer-defined schema and user input;
 - calls the configured provider;
 - validates the provider's runtime result;
 - returns a typed `IntentResult`.
 
-The provider:
+The provider controls how inference is reached.
 
-- decides how inference is reached;
-- converts the request into provider-specific network/API operations;
-- returns the raw result to the engine for validation.
+This keeps model/runtime infrastructure outside the core package.
 
-This allows the same core API to be used with hosted services, local model runtimes, or application-defined providers.
+## Custom provider
 
-## Built-in provider
-
-### `OpenAICompatibleProvider`
-
-The built-in provider targets an OpenAI-compatible chat-completions endpoint.
-
-It expects the configured base URL to expose:
-
-```text
-POST {baseUrl}/chat/completions
-```
-
-with support for:
-
-- `model`
-- chat `messages`
-- `response_format.type = "json_schema"`
-- strict structured JSON output
-
-Example:
-
-```ts
-const provider = new OpenAICompatibleProvider({
-  baseUrl: "https://example.com/v1",
-  model: "example-model",
-  apiKey: "your-api-key",
-});
-```
-
-Not every service described as "OpenAI-compatible" implements the same feature set. The built-in provider specifically depends on the structured JSON Schema response format shown above.
-
-Local runtimes can also be used when they expose the required compatible API. Intent Engine itself remains unaware of how that runtime is installed or managed.
-
-## Installation
-
-Install the published package:
-
-```bash
-npm install intent-engine
-```
-
-Intent Engine is published as an **ESM package**.
-
-Use standard ESM imports:
-
-```ts
-import { IntentEngine } from "intent-engine";
-```
-
-The package does not expose a CommonJS `require()` entry point in 0.1.0.
-
-## Usage by environment
-
-### Server / Node application
-
-A server application can use Intent Engine directly:
-
-```ts
-import {
-  IntentEngine,
-  OpenAICompatibleProvider,
-} from "intent-engine";
-
-const provider = new OpenAICompatibleProvider({
-  baseUrl: process.env.AI_BASE_URL!,
-  model: process.env.AI_MODEL!,
-  apiKey: process.env.AI_API_KEY,
-});
-
-const engine = new IntentEngine(provider);
-
-const result = await engine.extract(
-  {
-    location: "Where does the user want to live?",
-    feeling: "How should the home feel?",
-  },
-  "I want somewhere quiet near the city.",
-);
-```
-
-The server is responsible for storing provider credentials and configuring the inference endpoint.
-
-The built-in provider uses the runtime's global `fetch`. The core engine itself does not require `fetch`; custom providers can use any transport they need.
-
-### Live web application
-
-A common production deployment is:
-
-```text
-Browser
-    ↓
-Application Backend
-    ↓
-Intent Engine
-    ↓
-IntentProvider
-    ↓
-AI API / Local Runtime
-```
-
-This keeps provider credentials on the application's server and lets the server choose the inference runtime.
-
-Intent Engine can also be imported by browser applications because the package does not depend on Node-specific APIs. Direct browser inference additionally depends on the selected endpoint allowing browser requests and on the application's authentication design.
-
-### Browser-only application
-
-For a browser-only application, the package can be loaded with a JavaScript bundler or with a browser import map.
-
-A direct browser integration still depends on the provider endpoint being browser-accessible. The built-in provider does not proxy requests or solve CORS configuration.
-
-For hosted services that require secret credentials, the recommended architecture is to call the application's backend rather than embed a private API key in frontend code.
-
-### Desktop / Electron application
-
-Desktop applications can bundle Intent Engine normally:
-
-```text
-Desktop / Electron Application
-          ↓
-     Intent Engine
-          ↓
-    IntentProvider
-          ↓
- Local or Remote Inference
-```
-
-A desktop application may choose a local model runtime or a hosted endpoint.
-
-Intent Engine does not automatically detect Electron, download a model, start a local runtime, or package one. Those responsibilities remain with the desktop application and its deployment system.
-
-### Custom provider
-
-Applications can implement the exported `IntentProvider` interface when the built-in provider does not fit their environment:
+The package exports the `IntentProvider` interface so applications can use inference systems that do not fit the built-in provider.
 
 ```ts
 import {
@@ -252,143 +226,132 @@ import {
 const provider: IntentProvider = {
   async extract({ schema, input }) {
     // Call your own inference system.
-    // Return data matching the IntentResult structure.
+
     return {
       location: {
-        source: ["near the city"],
+        value: "Boston",
+        source: ["near Boston"],
         confidence: 0.9,
       },
-      feeling: {
-        source: ["quiet"],
-        confidence: 0.8,
+      reason: {
+        value: "moving for work",
+        source: ["moving for work"],
+        confidence: 0.95,
       },
     };
   },
 };
 
 const engine = new IntentEngine(provider);
-
-const result = await engine.extract(
-  {
-    location: "Where does the user want to live?",
-    feeling: "How should the home feel?",
-  },
-  "I want somewhere quiet near the city.",
-);
 ```
 
-The engine validates the returned value regardless of which provider created it.
+The engine validates custom-provider output using the same rules as the built-in provider.
 
 ## Structured output and validation
 
-Intent Engine converts the developer-defined `IntentSchema` into a JSON Schema representation for providers that support structured JSON output.
+Intent Engine converts the developer-defined schema into JSON Schema for providers that support structured output.
 
-The generated structure requires:
+For fields with canonical values:
 
-- every requested schema field;
-- a `source` string array;
-- a `confidence` number between `0` and `1`;
+```ts
+{
+  values: ["NYC", "Boston", "California"]
+}
+```
+
+the generated JSON Schema constrains `value` to those values plus `null`.
+
+For open-ended fields, the generated value schema accepts:
+
+```text
+string
+number
+boolean
+null
+```
+
+The runtime validator additionally requires:
+
+- every schema field to be present;
+- values with `values` to stay within the allowed set;
+- `source` to be a string array;
+- `confidence` to be a finite number from `0` through `1`;
 - no unexpected result fields.
 
-The core engine performs the final runtime validation.
+Malformed provider output causes `extract()` to reject instead of silently returning invalid data.
 
-Invalid provider output causes `extract()` to reject with an error rather than silently returning malformed data.
+## Usage by environment
 
-## Current result contract
+Intent Engine does not import Node-specific APIs in the runtime package and uses the runtime's global `fetch` only in the built-in HTTP provider.
 
-```ts
-type IntentSchema = {
-  [key: string]: string;
-};
+That makes the package usable in environments such as:
 
-type IntentResult = {
-  [key: string]: {
-    source: string[];
-    confidence: number;
-  };
-};
-```
+- Node.js/server applications
+- Browser applications
+- Electron/desktop applications
+- other JavaScript runtimes that provide `fetch`
 
-A schema value is a natural-language description of what should be extracted for that dimension.
+Browser use still depends on the selected inference endpoint being reachable from the browser and on the application's authentication/CORS design.
 
-For example:
+For private hosted API credentials, keep provider authentication on the application's backend.
 
-```ts
-const schema = {
-  location: "Where does the user want to live?",
-  feeling: "How should the home feel?",
-  budget: "What budget does the user imply?",
-};
-```
+## Testing
 
-## Current error behavior
+### Unit tests
 
-In 0.1.0, provider failures and malformed results are surfaced as thrown errors.
-
-The built-in provider currently reports failures for cases including:
-
-- non-successful HTTP responses;
-- missing provider response content;
-- invalid JSON returned by the provider.
-
-The core engine additionally rejects results with:
-
-- missing schema fields;
-- unexpected fields;
-- invalid `source` arrays;
-- non-finite confidence values;
-- confidence values outside the `0` to `1` range.
-
-Retry logic, timeout configuration, clarification flows, and richer ambiguity handling are not included in 0.1.0.
-
-## Runtime responsibility boundary
-
-Intent Engine provides:
-
-```text
-Schema
-  ↓
-IntentEngine
-  ↓
-IntentProvider
-  ↓
-Validated IntentResult
-```
-
-The application provides:
-
-```text
-Inference endpoint
-Model runtime
-Provider credentials
-Deployment strategy
-Environment-specific networking
-```
-
-There is no automatic runtime detection or runtime management in 0.1.0.
-
-This separation is intentional: the library can remain small and provider-flexible while applications choose the deployment model appropriate to their environment.
-
-## Build from source
-
-For repository development:
+Run the library validation/schema tests:
 
 ```bash
-npm install
-npm run build
+npm test
 ```
 
-To run the package checks:
+These tests do not require a model.
+
+### Ollama integration test
+
+The repository includes a real end-to-end test using an Ollama OpenAI-compatible endpoint:
+
+```bash
+npm run test:ollama
+```
+
+By default it uses:
+
+```text
+baseUrl: http://127.0.0.1:11434/v1
+model: gemma4:26b
+```
+
+You can override those values with environment variables.
+
+The integration test prints the schema, input, and actual provider output, then verifies:
+
+- canonical values;
+- exact evidence matches;
+- confidence ranges;
+- runtime validation.
+
+### Package check
+
+Run:
 
 ```bash
 npm run check
 ```
 
-Before publishing, the package can also be inspected without actually publishing:
+This runs the unit tests and then performs an npm package dry-run.
 
-```bash
-npm publish --dry-run
+The published package is restricted by the `files` field in `package.json`:
+
+```json
+[
+  "dist",
+  "README.md",
+  "LICENSE"
+]
 ```
+
+Repository tests and development files therefore remain available on GitHub without being included in the npm consumer package.
 
 ## Current public API
 
@@ -403,6 +366,37 @@ class IntentEngine {
     input: string,
   ): Promise<IntentResult>;
 }
+```
+
+### `IntentField`
+
+```ts
+type IntentField = {
+  field: string;
+  values?: readonly IntentValue[];
+};
+```
+
+### `IntentSchema`
+
+```ts
+type IntentSchema = Record<string, IntentField>;
+```
+
+### `IntentValue`
+
+```ts
+type IntentValue = string | number | boolean;
+```
+
+### `IntentResult`
+
+```ts
+type IntentResult = Record<string, {
+  value: IntentValue | null;
+  source: string[];
+  confidence: number;
+}>;
 ```
 
 ### `IntentProvider`
@@ -430,58 +424,57 @@ type OpenAICompatibleProviderOptions = {
 };
 ```
 
-### `IntentSchema`
-
-```ts
-type IntentSchema = {
-  [key: string]: string;
-};
-```
-
-### `IntentResult`
-
-```ts
-type IntentResult = {
-  [key: string]: {
-    source: string[];
-    confidence: number;
-  };
-};
-```
-
 ### `createIntentJsonSchema`
 
-The package also exports the function used to transform an `IntentSchema` into the JSON Schema structure used by the built-in provider.
+The package also exports:
+
+```ts
+createIntentJsonSchema(schema)
+```
+
+which converts an `IntentSchema` into the JSON Schema used by the built-in provider.
+
+## Runtime responsibility boundary
+
+Intent Engine provides:
+
+```text
+Schema
+  ↓
+IntentEngine
+  ↓
+IntentProvider
+  ↓
+Validated IntentResult
+```
+
+The application provides:
+
+```text
+Inference endpoint
+Model runtime
+Provider credentials
+Deployment strategy
+Environment-specific networking
+```
+
+There is no automatic model/runtime management in the package.
 
 ## Roadmap
 
-The 0.1.0 release establishes the first provider-backed architecture.
+Future work should be driven by real application needs and developer feedback.
 
-Post-0.1.0 work will be driven by implementation needs and developer feedback. Potential areas include:
+Potential areas include:
 
-- automated test coverage;
-- better timeout, retry, and cancellation controls;
+- richer ambiguity/clarification behavior;
+- timeout, retry, and cancellation controls;
 - broader provider compatibility;
-- additional official providers;
-- richer ambiguity and clarification behavior;
 - batch extraction;
 - streaming;
 - observability;
-- local-model integrations;
 - framework integrations.
 
-These are possible future directions, not promises for the current release.
-
-## Architecture and agent files
-
-The `agent-files/` directory contains the project's working architecture and agent guidance:
-
-- `AGENTS.md` — agent instructions and repository rules
-- `ARCHITECTURE.md` — finalized architectural decisions
-- `Agents_Context.md` — short-term implementation context and release state
-- `CLAUDE.md` — Claude entry point
-
-Architectural decisions should be finalized deliberately rather than inferred from implementation convenience.
+These are possible future directions, not requirements of the current release.
 
 ## License
 
