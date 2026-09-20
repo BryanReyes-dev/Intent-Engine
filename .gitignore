@@ -2,8 +2,7 @@
 node_modules/
 
 # Build output
-# (remove this if you decide to commit dist/)
-# dist/
+dist/
 
 # Environment variables
 .env
