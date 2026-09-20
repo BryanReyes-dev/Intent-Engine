@@ -36,12 +36,14 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "test:ollama": "npm run build && node --test tests/integration/ollama.test.mjs",
     "build": "tsc",
+    "test": "npm run test:unit",
+    "test:unit": "npm run build && node --test tests/unit",
+    "test:ollama": "npm run build && node --test tests/integration/ollama.test.mjs",
     "check": "npm run build && npm pack --dry-run",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-  "typescript": "^7.0.2"
-}
+    "typescript": "^7.0.2"
+  }
 }
