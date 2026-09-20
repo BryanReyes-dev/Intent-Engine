@@ -1,6 +1,6 @@
-export type { IntentEngine } from "./engine.js";
+export { IntentEngine } from "./engine.js";
 
 export type {
   IntentSchema,
-  IntentResult
+  IntentResult,
 } from "./types.js";
