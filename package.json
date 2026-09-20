@@ -1,31 +1,50 @@
 {
   "name": "intent-engine",
-  "version": "1.0.0",
-   "type": "module",
-  "description": "AI-powered intent extraction library that converts natrual language input into structured developer-defined data.",
+  "version": "0.1.0",
+  "description": "A schema-driven TypeScript library for extracting structured intent from natural-language input.",
+  "type": "module",
   "keywords": [
-    "Ai",
-    "Intent",
-    "search",
+    "ai",
+    "intent",
     "semantic-search",
-    "typscript",
-    "LLM",
-    "natrual-language-processing"
+    "typescript",
+    "llm",
+    "natural-language-processing"
   ],
-  "homepage": "https://github.com/Dimethyl-tryptamine/Intent-engine#readme",
+  "homepage": "https://github.com/BryanReyes-dev/Intent-engine#readme",
   "bugs": {
-    "url": "https://github.com/Dimethyl-tryptamine/Intent-engine/issues"
+    "url": "https://github.com/BryanReyes-dev/Intent-engine/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Dimethyl-tryptamine/Intent-engine.git"
+    "url": "git+https://github.com/BryanReyes-dev/Intent-engine.git"
   },
   "license": "MIT",
   "author": "Bryan Reyes",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "test": "vitest",
-    "build": "tsc"
+    "build": "tsc",
+    "check": "npm run build && npm pack --dry-run",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
   }
 }
