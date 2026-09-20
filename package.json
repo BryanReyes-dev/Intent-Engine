@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run test:unit",
-    "test:unit": "npm run build && node --test tests/unit",
+    "test:unit": "npm run build && node --test tests/unit/intent-engine.test.mjs",
     "test:ollama": "npm run build && node --test tests/integration/ollama.test.mjs",
     "check": "npm run build && npm pack --dry-run",
     "prepublishOnly": "npm run build"
