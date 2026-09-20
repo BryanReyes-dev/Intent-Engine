@@ -54,6 +54,10 @@ test("maps natural language to schema values through Ollama", async () => {
   assert.ok(result.temperature.source.length > 0);
   assert.ok(result.reason.source.length > 0);
 
+  assert.ok(result.location.source.every((source) => input.includes(source)));
+  assert.ok(result.temperature.source.every((source) => input.includes(source)));
+  assert.ok(result.reason.source.every((source) => input.includes(source)));
+
   assert.ok(result.location.confidence >= 0);
   assert.ok(result.location.confidence <= 1);
   assert.ok(result.temperature.confidence >= 0);
@@ -63,6 +67,8 @@ test("maps natural language to schema values through Ollama", async () => {
 
   console.log("\nRESULT");
   console.log("✓ Schema mapping passed");
-  console.log("✓ All values validated");
+  console.log("✓ Canonical values matched");
+  console.log("✓ Evidence matched input");
+  console.log("✓ Confidence values validated");
   console.log("══════════════════════════════════════════════\n");
 });
