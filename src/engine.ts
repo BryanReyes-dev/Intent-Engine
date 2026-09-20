@@ -1,17 +1,20 @@
-import type { IntentSchema,IntentResult } from "./types.js";
+import type { IntentResult, IntentSchema } from "./types.js";
 
 export class IntentEngine {
-    async ExtractIntent(Schema: IntentSchema, Input: string): Promise<IntentResult> {
-        // ai will go here
-        const result :IntentResult = {}
-        for (const key in Schema ) {
-            result[key] = {
-                source: ["unkown"],
-                confidence: 0
-            }
-        }
-        return result
-        
-        
+  async extract(
+    schema: IntentSchema,
+    _input: string,
+  ): Promise<IntentResult> {
+    // Provider-backed extraction will be implemented in a later milestone.
+    const result: IntentResult = {};
+
+    for (const key in schema) {
+      result[key] = {
+        source: ["unknown"],
+        confidence: 0,
+      };
     }
+
+    return result;
+  }
 }
