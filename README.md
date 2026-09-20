@@ -1,84 +1,27 @@
 # Intent Engine
 
-A schema-driven AI intent extraction library that converts natural language into structured, developer-defined data.
+A schema-driven TypeScript library for extracting structured intent from natural-language input.
 
-## Overview
+## Status
 
-Intent Engine allows developers to define what information they want to extract from users and uses AI to transform natural language input into structured intent data.
+**0.1.0 — publishable baseline**
 
-Instead of creating custom parsing logic for every search system, developers define the dimensions they care about, and Intent Engine handles converting user input into those dimensions.
+The repository currently contains the public package foundation and a small, stable API surface. AI provider integration and the actual extraction implementation are intentionally not included in this baseline yet.
 
-## The Problem
+The goal of this milestone is to make the package structure, public API, documentation, build, and distribution model ready before implementing provider-specific behavior.
 
-Traditional search systems rely heavily on keywords and predefined filters.
+## Core concept
 
-For example:
-
-```
-"quiet apartment near the city with good restaurants"
-```
-
-A traditional system may only see:
-
-```
-location = city
-amenities = restaurants
-```
-
-Intent Engine aims to understand the deeper intent:
-
-```
-{
-  location: "near the city",
-  atmosphere: "quiet",
-  lifestyle: "access to restaurants"
-}
-```
-
-## Core Concept
-
-Developers define a schema:
+Developers define the dimensions that matter to their application:
 
 ```ts
 const schema = {
-  location: "Where does the user want to be located?",
-  atmosphere: "How does the user want the environment to feel?",
-  budget: "What is the user's spending preference?"
+  location: "Where does the user want to live?",
+  feeling: "How should the home feel?"
 };
 ```
 
-The user provides natural language:
-
-```text
-"I want a peaceful apartment close to restaurants, but I can spend a little more."
-```
-
-Intent Engine returns structured intent:
-
-```json
-{
-  "location": {
-    "value": "close to restaurants",
-    "confidence": 0.9
-  },
-  "atmosphere": {
-    "value": "peaceful",
-    "confidence": 0.95
-  },
-  "budget": {
-    "value": "flexible",
-    "confidence": 0.8
-  }
-}
-```
-
-## Installation
-
-```bash
-npm install intent-engine
-```
-
-## Basic Usage
+They then pass natural-language input to the engine:
 
 ```ts
 import { IntentEngine } from "intent-engine";
@@ -86,72 +29,104 @@ import { IntentEngine } from "intent-engine";
 const engine = new IntentEngine();
 
 const result = await engine.extract(
-  "I want a quiet home near the city",
-  {
-    location: "Where does the user want to live?",
-    feeling: "How should the home feel?"
-  }
+  schema,
+  "I want a quiet home near the city"
 );
-
-console.log(result);
 ```
 
-## Design Philosophy
+The current baseline returns the correct structural shape but uses placeholder values until provider-backed extraction is implemented.
 
-Intent Engine is built around three principles:
+## Package architecture
 
-### 1. Developer-defined intelligence
+The package is intentionally split conceptually into:
 
-The developer decides what dimensions matter.
+```text
+Application
+    ↓
+IntentEngine
+    ↓
+Provider abstraction
+    ↓
+AI runtime / API
+    ↓
+Model
+```
 
-The library does not assume every application needs the same understanding of users.
+The provider/runtime boundary is **not finalized yet**.
 
----
+Intent Engine should not require Ollama specifically. A web application, desktop runtime, server application, or another NPM package may need different deployment strategies. Future architecture work will determine how hosted APIs, local runtimes such as Ollama, bundled/managed runtimes, and application-provided providers fit behind the same developer-facing API.
 
-### 2. Structured output
+This is an architectural question for the next milestone, not a requirement for the current baseline.
 
-AI responses should not be unpredictable text.
+## Installation
 
-Intent Engine converts natural language into reliable data structures applications can use.
+```bash
+npm install intent-engine
+```
 
----
+## Build from source
 
-### 3. Provider flexibility
+```bash
+npm install
+npm run build
+```
 
-The goal is to avoid locking developers into one AI provider.
+To verify the package can build and produce an npm archive:
 
-Future support may include:
+```bash
+npm run check
+```
 
-* OpenAI
-* Anthropic
-* Local models
-* Custom AI systems
+## Current public API
 
-## Planned Features
+### `IntentEngine`
 
-* [ ] Schema validation
-* [ ] AI provider support
-* [ ] Structured output parsing
-* [ ] Confidence scoring
-* [ ] Embedding-based semantic matching
-* [ ] React components
-* [ ] Framework integrations
-* [ ] Python implementation
+```ts
+class IntentEngine {
+  extract(
+    schema: IntentSchema,
+    input: string
+  ): Promise<IntentResult>;
+}
+```
 
-## Project Status
+### `IntentSchema`
 
-🚧 Early development
+A developer-defined map of intent dimensions to natural-language descriptions.
 
-The core architecture is currently being designed.
+### `IntentResult`
 
-## Agent Files
+A map containing the extracted source values and confidence information for each requested dimension.
 
-The `agent-files/` directory contains documentation for AI coding agents and is separate from this human-facing README and the library source. `AGENTS.md` contains agent instructions, `ARCHITECTURE.md` records finalized architecture, `Agents_Context.md` stores short-term working context, and `CLAUDE.md` provides the Claude entry point.
+The exact extraction semantics, validation rules, provider configuration, and confidence strategy remain intentionally open until the architecture is finalized.
 
-## Contributing
+## Roadmap
 
-Contributions, ideas, and discussions are welcome.
+The first real implementation milestone will focus on:
+
+1. Define the provider abstraction.
+2. Implement the first provider.
+3. Produce reliable structured model output.
+4. Validate provider output against the developer's schema.
+5. Define error and ambiguity behavior.
+6. Add automated tests.
+7. Add executable examples.
+8. Verify installation and usage from a clean consumer project.
+9. Publish an initial release and gather developer feedback.
+
+Potential later work includes additional providers, local-model support, semantic matching, React/framework integrations, batch extraction, streaming, observability, and other integrations. These are not commitments for the first release.
+
+## Architecture and agent files
+
+The `agent-files/` directory contains the project's working architecture and agent guidance:
+
+- `AGENTS.md` — agent instructions and repository rules
+- `ARCHITECTURE.md` — finalized architectural decisions
+- `Agents_Context.md` — short-term implementation context and open questions
+- `CLAUDE.md` — Claude entry point
+
+Architectural decisions should be finalized deliberately rather than inferred from implementation convenience.
 
 ## License
 
-MIT License
+MIT
