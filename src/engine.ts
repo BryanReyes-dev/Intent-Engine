@@ -1,5 +1,6 @@
 import type { IntentProvider } from "./providers/types.js";
 import type { IntentResult, IntentSchema } from "./types.js";
+import { validateIntentResult } from "./validation.js";
 
 export class IntentEngine {
   constructor(private readonly provider: IntentProvider) {}
@@ -13,6 +14,6 @@ export class IntentEngine {
       input,
     });
 
-    return result as IntentResult;
+    return validateIntentResult(schema, result);
   }
 }
