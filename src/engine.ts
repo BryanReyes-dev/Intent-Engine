@@ -1,20 +1,18 @@
+import type { IntentProvider } from "./providers/types.js";
 import type { IntentResult, IntentSchema } from "./types.js";
 
 export class IntentEngine {
+  constructor(private readonly provider: IntentProvider) {}
+
   async extract(
     schema: IntentSchema,
-    _input: string,
+    input: string,
   ): Promise<IntentResult> {
-    // Provider-backed extraction will be implemented in a later milestone.
-    const result: IntentResult = {};
+    const result = await this.provider.extract({
+      schema,
+      input,
+    });
 
-    for (const key in schema) {
-      result[key] = {
-        source: ["unknown"],
-        confidence: 0,
-      };
-    }
-
-    return result;
+    return result as IntentResult;
   }
 }
