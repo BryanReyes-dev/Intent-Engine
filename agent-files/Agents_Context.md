@@ -4,7 +4,7 @@
 >
 > This file is intentionally non-secret and may be committed to the public repository.
 >
-> This is a living workspace for current context, ideas, hypotheses, implementation discoveries, preferences, open questions, and agent-to-agent communication. It is **not the authoritative architecture document**.
+> This is a living workspace for current context, implementation discoveries, release notes, preferences, open questions, and agent-to-agent communication. It is **not the authoritative architecture document**.
 >
 > Finalized architectural decisions belong in `agent-files/ARCHITECTURE.md` after Bryan explicitly approves them.
 
@@ -16,7 +16,7 @@ This file is short-term working memory. Its value comes from high-signal informa
 
 ## Hard rule: do not repeat context unnecessarily
 
-Agents should actively avoid repeating information already present here or in authoritative architecture documentation. Before adding a note, ask:
+Before adding a note, ask:
 
 - Is this information actually new?
 - Is it already documented elsewhere?
@@ -24,9 +24,7 @@ Agents should actively avoid repeating information already present here or in au
 - Is it still relevant?
 - Does it belong in `ARCHITECTURE.md` instead?
 
-Prefer editing, consolidating, replacing, or removing existing context over appending another explanation of the same thing.
-
-The file has a finite practical size and agents must treat that limit as real.
+Prefer editing, consolidating, replacing, or removing existing context over appending another explanation.
 
 ### Current policy
 
@@ -37,8 +35,8 @@ The file has a finite practical size and agents must treat that limit as real.
 
 ### Context Metrics
 
-- **Last measured:** 2026-08-22
-- **Approximate token count:** intentionally kept compact; exact tokenizer measurement not currently available
+- **Last measured:** 2026-09-20
+- **Approximate token count:** intentionally compact; exact tokenizer measurement not currently available
 - **Preferred range:** 5,000–10,000 tokens
 - **Hard ceiling:** 15,000 tokens
 - **Status:** Healthy
@@ -53,13 +51,12 @@ Agents working on Intent Engine should read this file when beginning substantial
 Clearly distinguish:
 
 - established facts
-- current implementation plans
-- hypotheses
+- implementation discoveries
+- current release state
 - proposals
 - open questions
 - rejected ideas
-- implementation discoveries
-- finalized architecture
+- future possibilities
 
 Do not silently turn a hypothesis into a requirement or architectural decision.
 
@@ -81,323 +78,405 @@ Never silently promote a proposal into architecture.
 
 # 2. Project Identity
 
-Intent Engine is a TypeScript/NPM library for converting natural-language input into structured, developer-defined intent data.
+Intent Engine is a focused TypeScript/NPM library for schema-driven AI intent extraction.
 
 The core idea is:
 
 ```text
 Natural Language
       ↓
-Intent Engine
+IntentEngine
       ↓
-Developer-defined Schema
+Developer-defined IntentSchema
       ↓
-Structured Intent
+IntentProvider
+      ↓
+Validated IntentResult
 ```
 
-The developer decides which dimensions matter to their application. Intent Engine should handle the AI-assisted extraction rather than forcing every application to build custom parsing logic.
+The developer chooses the intent dimensions that matter to the application. Intent Engine handles the provider call and validates the returned structured data.
 
-The current README describes it as a schema-driven AI intent extraction library and provides an NPM installation and TypeScript usage example. fileciteturn3file0L2-L2
-
-Intent Engine is intended to be a focused developer library, not a general-purpose AI assistant.
+Intent Engine is a developer library, not a general-purpose AI assistant and not an AI runtime manager.
 
 ---
 
-# 3. Current Repository State
+# 3. Current 0.1.0 Implementation
 
-The repository currently contains:
-
-- `src/engine.ts`
-- `src/index.ts`
-- `src/types.ts`
-- compiled `dist/` output
-- `package.json`
-- TypeScript configuration
-- `README.md`
-- an existing NPM-oriented package structure
-
-The README currently identifies the project as **early development** and lists schema validation, AI provider support, structured output parsing, confidence scoring, embedding-based semantic matching, React components, framework integrations, and a Python implementation as planned features. fileciteturn3file0L2-L2
-
-The existing package structure already makes Intent Engine a good candidate for a small, polished public NPM library.
-
----
-
-# 4. Product Direction
-
-The immediate goal is **not** to build every planned feature.
-
-The immediate goal is to make the smallest version of Intent Engine that is genuinely useful, reliable, documented, and publishable.
-
-Target progression:
+The current source contains:
 
 ```text
-Current prototype
-      ↓
-Stable core API
-      ↓
-Provider abstraction
-      ↓
-Reliable structured extraction
-      ↓
-Validation + confidence handling
-      ↓
-Tests + examples
-      ↓
-NPM publication
-      ↓
-Real developer feedback
-      ↓
-More providers / integrations
-      ↓
-Broader intent infrastructure
+src/
+├── engine.ts
+├── index.ts
+├── schema.ts
+├── types.ts
+├── validation.ts
+└── providers/
+    ├── openai-compatible.ts
+    └── types.ts
 ```
 
-The first public milestone should prioritize **quality and usability over feature count**.
+The public package exports:
+
+- `IntentEngine`
+- `IntentProvider`
+- `IntentProviderRequest`
+- `OpenAICompatibleProvider`
+- `OpenAICompatibleProviderOptions`
+- `IntentSchema`
+- `IntentResult`
+- `createIntentJsonSchema`
+
+The package is ESM and uses generated JavaScript plus TypeScript declarations from `dist/`.
 
 ---
 
-# 5. Core API Direction
+# 4. Core API
 
-The current conceptual API is:
+The current API is:
 
 ```ts
-const engine = new IntentEngine();
+const provider = new OpenAICompatibleProvider({
+  baseUrl: "http://127.0.0.1:11434/v1",
+  model: "gemma4:26b",
+});
+
+const engine = new IntentEngine(provider);
 
 const result = await engine.extract(
-  "I want a quiet home near the city",
   {
     location: "Where does the user want to live?",
-    feeling: "How should the home feel?"
-  }
+    feeling: "How should the home feel?",
+  },
+  "I want somewhere quiet near the city.",
 );
 ```
 
-This API should remain simple from the developer's perspective.
+The schema is a map of dimension names to natural-language descriptions.
 
-The core abstraction should eventually support:
+The result is:
 
-```text
-Developer schema
-      ↓
-Provider/model abstraction
-      ↓
-Intent extraction
-      ↓
-Validated structured result
+```ts
+type IntentResult = {
+  [key: string]: {
+    source: string[];
+    confidence: number;
+  };
+};
 ```
 
-Do not lock the library to one AI provider.
-
-The provider boundary should make it possible to support hosted APIs, local models, and potentially custom AI systems without changing the developer-facing intent model unnecessarily.
+`source` contains extracted source text. `confidence` is provider-generated and is only range-validated by the core; it is not currently represented as a calibrated probability.
 
 ---
 
-# 6. Immediate Development Priorities
+# 5. Provider Architecture
 
-Prioritize these in roughly this order:
+The engine depends on the exported `IntentProvider` abstraction:
 
-### 1. Make the core extraction path real
+```ts
+type IntentProviderRequest = {
+  schema: IntentSchema;
+  input: string;
+};
 
-The package should perform actual AI-assisted intent extraction rather than remain primarily a conceptual prototype.
-
-### 2. Define a clean provider abstraction
-
-Separate:
-
-```text
-Intent Engine
-      ↓
-AI Provider
-      ↓
-Model/API
+type IntentProvider = {
+  extract(request: IntentProviderRequest): Promise<unknown>;
+};
 ```
 
-The engine should not be tightly coupled to a single provider implementation.
+The provider returns `unknown` so the engine can validate actual runtime data.
 
-### 3. Make structured output reliable
+The built-in provider is `OpenAICompatibleProvider`.
 
-The result should be predictable and usable by TypeScript applications.
+It:
 
-Investigate schema validation and malformed-model-output handling before adding many features.
+1. Sends a POST request to `{baseUrl}/chat/completions`.
+2. Supplies the model and chat messages.
+3. Converts the developer schema into JSON Schema.
+4. Requests strict structured JSON output through `response_format`.
+5. Parses the returned message content as JSON.
+6. Returns the raw parsed value to the engine.
+7. Lets the engine perform final validation.
 
-### 4. Establish a strong type system
+The implementation currently assumes the target endpoint supports the required OpenAI-compatible structured-output request shape. It is not a generic adapter for every partial implementation of the OpenAI API.
 
-Define clear public types for schemas, extracted values, confidence information, errors, provider configuration, and results.
+---
 
-### 5. Add tests
+# 6. Environment and Runtime Usage
 
-Test both successful extraction and failure cases. Tests should become a major part of the package's credibility before publication.
+The same package can be used in multiple deployment models because the runtime sits behind the provider boundary.
 
-### 6. Improve developer experience
+### Server / live service
 
-A developer should be able to:
+```text
+Application backend
+    ↓
+IntentEngine
+    ↓
+OpenAICompatibleProvider or custom provider
+    ↓
+Hosted API or local runtime
+```
+
+The backend owns provider credentials and deployment configuration.
+
+### Browser
+
+```text
+Browser
+    ↓
+Application backend
+    ↓
+Intent Engine
+    ↓
+Provider
+    ↓
+Inference
+```
+
+Direct browser use is possible because the core package does not use Node-specific APIs, but the selected inference endpoint must be browser-accessible and the application's authentication design must be appropriate.
+
+Intent Engine does not provide CORS proxying or secret handling.
+
+### Desktop / Electron
+
+```text
+Desktop application
+    ↓
+Intent Engine
+    ↓
+Provider
+    ↓
+Local or remote inference
+```
+
+The application may bundle and manage a local runtime separately. Intent Engine does not automatically detect Electron or start, install, download, or manage a model runtime.
+
+### Custom provider
+
+An application can implement `IntentProvider` when it has its own transport or AI service. The engine's runtime validation still applies.
+
+---
+
+# 7. Runtime Requirements
+
+There is intentionally no Node `engines` field in `package.json` because the core package does not require Node-specific APIs.
+
+Important environment notes:
+
+- The published package is ESM.
+- The core engine does not directly depend on `fetch`.
+- `OpenAICompatibleProvider` uses global `fetch`.
+- Browser environments normally provide `fetch`.
+- Server environments must provide a compatible global `fetch` implementation or use a custom provider with another transport.
+
+Do not reintroduce a Node version restriction without an explicit reason and architectural review.
+
+---
+
+# 8. Validation Behavior
+
+`validateIntentResult()` currently rejects:
+
+- non-object provider results;
+- arrays returned as top-level results;
+- missing schema fields;
+- unexpected result fields;
+- non-object dimension values;
+- non-array `source` fields;
+- non-string entries inside `source`;
+- non-number confidence values;
+- non-finite confidence values;
+- confidence values outside `0` through `1`.
+
+The goal is to fail closed on malformed provider output rather than return an invalid `IntentResult`.
+
+---
+
+# 9. Error Behavior in 0.1.0
+
+The built-in provider currently reports:
+
+- non-successful HTTP responses;
+- missing `choices[0].message.content`;
+- invalid JSON content.
+
+The engine then validates the parsed provider result.
+
+Not currently implemented:
+
+- retry policies;
+- timeout configuration;
+- cancellation/AbortSignal configuration;
+- automatic fallback providers;
+- clarification loops;
+- richer ambiguity objects;
+- telemetry or observability hooks.
+
+These are follow-up possibilities rather than current capabilities.
+
+---
+
+# 10. Packaging and Distribution
+
+`package.json` currently publishes:
+
+```text
+dist/
+README.md
+LICENSE
+package.json
+```
+
+The package uses:
+
+- `main: ./dist/index.js`
+- `types: ./dist/index.d.ts`
+- an ESM `exports` entry
+- `sideEffects: false`
+- `prepublishOnly: npm run build`
+
+Repository development commands:
+
+```bash
+npm install
+npm run build
+npm run check
+```
+
+Release verification:
+
+```bash
+npm publish --dry-run
+```
+
+After publication, the most important external verification is a clean consumer project that runs:
 
 ```bash
 npm install intent-engine
 ```
 
-then follow a short example and get a useful result quickly.
-
-### 7. Publish and validate externally
-
-The first important external milestone is not a large feature set. It is getting the library into developers' hands and learning whether they actually want it.
+and imports the published package rather than a local tarball or repository checkout.
 
 ---
 
-# 7. Features to Investigate After the Core Works
+# 11. Tests and Verification State
 
-Potential next features, not commitments:
+0.1.0 does not yet contain a dedicated automated test suite.
 
-- Schema validation
-- Multiple AI providers
-- Local model support
-- Structured output enforcement
-- Confidence scoring
-- Retry/fallback behavior
-- Embedding-based semantic matching
-- Batch intent extraction
-- Streaming where useful
-- React integrations
-- Next.js integrations
-- Framework adapters
-- Python implementation
-- Observability/debugging information
-- Caching where appropriate
+The release has instead been manually verified through:
 
-Features should be prioritized according to actual developer demand rather than simply completing the current README checklist.
+- successful TypeScript build;
+- successful npm package dry run;
+- a separate consumer project using the package from plain HTML/CSS/JavaScript;
+- real provider-backed extraction using a local OpenAI-compatible Ollama endpoint and a real model;
+- successful schema/result validation on the returned data.
+
+Automated tests are a post-0.1.0 priority, not a claim of current coverage.
 
 ---
 
-# 8. Market / Recognition Strategy
+# 12. Release and Usage Contract
 
-Intent Engine is currently viewed as a **developer-recognition project** more than a primary business.
-
-The strategic goal is to create a small piece of useful infrastructure that can:
-
-- be published to NPM
-- be discovered by developers
-- generate GitHub/NPM usage and recognition
-- demonstrate AI engineering ability
-- provide evidence that Bryan can design and ship reusable developer tooling
-
-Monetization is possible later, but the immediate success metric should be **real adoption and developer usefulness**.
-
-Do not add unnecessary monetization infrastructure before there is evidence of demand.
-
-Potential future monetization could involve hosted providers, premium functionality, enterprise features, or services, but these are hypotheses rather than current requirements.
-
----
-
-# 9. Relationship to Bryan's Other Projects
-
-Intent Engine is one part of a broader portfolio:
+For 0.1.0, the following statements are safe to treat as current:
 
 ```text
-Evergreen Estates
-    → Production web development / employability
-
-Intent Engine
-    → Developer infrastructure / NPM recognition
-
-Daedalus
-    → Local AI runtime / potential company
-
-Prometheus
-    → Long-term AI research / flagship "wow" project
+Intent Engine = intent extraction library
+IntentProvider = inference boundary
+OpenAICompatibleProvider = first built-in provider
+Application = owner of runtime/deployment strategy
 ```
 
-Intent Engine should therefore remain **focused and relatively contained**. It should not grow into another Daedalus-sized project unless external evidence justifies it.
+Do not describe 0.1.0 as:
 
-The current objective is to make Intent Engine polished enough that it earns recognition without consuming the time needed for larger priorities.
+- a bundled model runtime;
+- an Ollama manager;
+- an automatic environment detector;
+- a hosted inference service;
+- a browser proxy;
+- a multi-provider SDK.
+
+Those are future possibilities, not current capabilities.
 
 ---
 
-# 10. Public API Philosophy
+# 13. Current Release Goal
 
-The library should feel like infrastructure rather than a chatbot SDK.
+The immediate goal is to publish 0.1.0 and test the package exactly as an external developer would use it.
 
-Prefer:
+Target sequence:
 
-```ts
-engine.extract(input, schema)
+```text
+Repository synchronized
+      ↓
+Documentation synchronized
+      ↓
+npm publish 0.1.0
+      ↓
+Clean project: npm install intent-engine
+      ↓
+Import published package
+      ↓
+Run a real extraction
+      ↓
+Record actual issues
+      ↓
+Decide 0.2.0 scope from evidence
 ```
 
-over exposing unnecessary model-specific details.
-
-The developer should primarily care about:
-
-- what information they want
-- what input they provide
-- what structured result they receive
-- how errors are handled
-
-Provider-specific configuration should remain available without polluting the core abstraction.
-
-Avoid designing the API around a single model vendor.
+Do not expand the provider matrix before the first published package has been externally exercised.
 
 ---
 
-# 11. Quality Requirements Before NPM Publication
+# 14. Open Questions for Post-0.1.0
 
-Before considering the package production-ready enough for public adoption:
+These remain open until evidence or explicit architecture decisions resolve them:
 
-- Core API works reliably.
-- TypeScript types are clean and intentional.
-- Public exports are deliberate.
-- Build output is correct.
-- README matches the actual implementation.
-- Installation works from a clean project.
-- Examples are executable and accurate.
-- Errors are understandable.
-- Tests cover core behavior and failure modes.
-- Provider configuration is documented.
-- No secrets are committed.
-- Package metadata is professional.
-- Versioning follows a deliberate scheme.
+- Should confidence eventually be independent of model self-reporting?
+- Should the provider abstraction accept cancellation/timeouts?
+- Should official providers be added for vendors that do not expose the required compatible API?
+- Should there be a first-party local-runtime provider/manager?
+- Should ambiguity be a first-class result type?
+- Should the schema eventually support Zod, JSON Schema, or another formal schema system?
+- Should the browser experience include a dedicated backend/proxy package?
+- How much provider-specific configuration should be exposed?
+- Which improvements are justified by real developer usage?
 
-Do not publish a package merely because `npm publish` succeeds. The goal is a library another developer would actually trust enough to install.
+These are questions, not commitments.
 
 ---
 
-# 12. Open Questions
+# 15. Product Direction
 
-These are deliberately unresolved until implementation or user feedback provides evidence:
+Intent Engine should remain a focused developer-infrastructure project.
 
-- Which AI provider should be the first official provider?
-- Should the first release support one provider extremely well or multiple providers immediately?
-- Should confidence scores come from the model, an independent scoring mechanism, or both?
-- How strict should schema validation be?
-- Should the schema format remain plain TypeScript objects or support a formal schema standard such as JSON Schema/Zod?
-- How should ambiguous user intent be represented?
-- Should extraction return missing fields, `null`, uncertainty, or clarification requests?
-- How much provider-specific functionality should be exposed?
-- What is the smallest feature set that developers would actually install?
+The immediate objective is usefulness, installability, recognition, and real developer feedback.
 
-These are questions, not decisions.
+Avoid expanding it into a runtime manager, AI assistant, or large framework until external evidence justifies that scope.
 
 ---
 
-# 13. Agent Communication
+# 16. Agent Communication
 
 ## ChatGPT
 
 Current understanding:
 
-- Intent Engine is a focused TypeScript/NPM library for schema-driven intent extraction.
-- The immediate objective is to turn the current prototype into a genuinely useful and publishable package.
-- Developer recognition and adoption are more important than immediate monetization.
-- The package should remain provider-flexible.
-- The core abstraction should stay simple.
-- Avoid feature creep until the core is reliable.
-- Real developer feedback should determine later priorities.
+- 0.1.0 is the first provider-backed release.
+- The core engine is provider-flexible.
+- The built-in provider targets an OpenAI-compatible structured-output API.
+- The package is ESM.
+- Runtime management belongs to the application, not the core package.
+- The immediate goal is clean publication and a true post-publication consumer test.
+- Feature expansion should follow real developer feedback.
 
 ### Future thoughts
 
-_Add only genuinely new observations. Do not restate established context._
+_Add only genuinely new observations._
 
 ## Codex
 
-Use this section for implementation discoveries and useful observations that another agent needs.
+Use this section for implementation discoveries that another agent needs.
 
 ### Current thoughts
 
@@ -405,7 +484,7 @@ _Add implementation discoveries here._
 
 ### Repository observations
 
-_Add useful observations about the existing implementation here._
+_Add useful observations about the current implementation here._
 
 ### Concerns / risks
 
@@ -417,7 +496,7 @@ _Add ideas worth discussing before implementation._
 
 ---
 
-# 14. Maintenance Reminder for Future Agents
+# 17. Maintenance Reminder for Future Agents
 
 **Do not let this file become a second architecture document.**
 
@@ -425,4 +504,4 @@ When an idea becomes finalized architecture, ask Bryan for approval and move the
 
 When the same context changes, update the existing note rather than appending another explanation.
 
-The goal is for `Agents_Context.md` to remain a compact, high-signal, changing working context while `ARCHITECTURE.md` remains the authoritative record of deliberate architectural decisions.
+The goal is for `Agents_Context.md` to remain compact, high-signal, and current while `ARCHITECTURE.md` remains the authoritative record of deliberate architectural decisions.
