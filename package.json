@@ -35,16 +35,12 @@
     "LICENSE"
   ],
   "sideEffects": false,
-  "engines": {
-    "node": ">=20"
-  },
   "scripts": {
     "build": "tsc",
     "check": "npm run build && npm pack --dry-run",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
-    "typescript": "^7.0.2"
-  }
+  "typescript": "^7.0.2"
+}
 }
