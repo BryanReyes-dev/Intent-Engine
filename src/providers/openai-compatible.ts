@@ -3,6 +3,7 @@ import type {
   IntentProvider,
   IntentProviderRequest,
 } from "./types.js";
+import { createIntentJsonSchema } from "../schema.js";
 
 export type OpenAICompatibleProviderOptions = {
   baseUrl: string;
@@ -53,8 +54,13 @@ export class OpenAICompatibleProvider implements IntentProvider {
             },
           ],
           response_format: {
-            type: "json_object",
-          },
+            type: "json_schema",
+            json_schema: {
+                name: "intent_result",
+                strict: true,
+                schema: createIntentJsonSchema(request.schema),
+            },
+        },
         }),
       },
     );
