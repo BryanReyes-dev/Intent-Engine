@@ -28,9 +28,9 @@ Intent Engine is a TypeScript/NPM library for converting natural-language input 
 - Avoid unrelated changes when working on a focused task.
 - Do not introduce automatic model/runtime management unless it is explicitly approved as a product requirement.
 
-## 0.1.0 Release Contract
+## 0.2.0 Release Contract
 
-The 0.1.0 package is a library, not an AI runtime manager.
+The current 0.2.0 package is a library, not an AI runtime manager.
 
 The current contract is:
 
@@ -54,9 +54,25 @@ The package is published as ESM. Do not document CommonJS `require()` support un
 
 The core library does not use Node-specific APIs. The built-in HTTP provider uses global `fetch`.
 
+## Current 0.2.0 Behavior
+
+The schema supports fields with optional canonical `values`.
+
+- Canonical fields restrict non-null values to the configured set.
+- Open-ended fields allow string, number, boolean, or `null`.
+- Every requested field must be returned.
+- Unexpected result fields are rejected.
+- Evidence is represented as a string array.
+- Confidence must be a finite number from `0` through `1`.
+- Confidence is provider-generated and is not treated as calibrated probability.
+- `null` represents insufficient information/no usable value.
+- There is no dedicated ambiguity result in the current release.
+
+The built-in provider currently has no timeout, cancellation, retry, or automatic fallback controls.
+
 ## Usage Expectations
 
-Agents documenting or testing the package should distinguish these environments:
+Agents documenting or testing the package should distinguish current behavior from future work.
 
 ### Server / Node
 
@@ -84,7 +100,7 @@ Provider
 Inference
 ```
 
-Direct browser inference is possible only when the selected endpoint and authentication design permit it. Intent Engine does not provide a proxy or CORS layer.
+Direct browser inference is conditional on endpoint accessibility and authentication/CORS design. Intent Engine does not provide a proxy or CORS layer.
 
 ### Desktop / Electron
 
@@ -104,6 +120,34 @@ Intent Engine does not automatically detect desktop runtimes, install model runt
 
 Applications may implement the exported `IntentProvider` interface. The engine must still validate the provider's runtime return value before exposing it as an `IntentResult`.
 
+## Current Test Expectations
+
+The repository includes unit tests for schema generation and core validation plus an Ollama integration test.
+
+Documentation and tests should continue to match the actual source. Provider transport/network failure coverage is an identified gap, not a current feature.
+
+## Known Limitations and Planned Work
+
+The following are current limitations, not capabilities:
+
+- no provider timeout controls;
+- no request cancellation controls;
+- no retry policy;
+- no automatic provider fallback;
+- no first-class ambiguity state;
+- no built-in clarification loop;
+- no independent confidence calibration;
+- limited compatibility with OpenAI-compatible endpoints that do not support the required structured-output request shape;
+- incomplete provider failure-mode coverage.
+
+Tracked future work includes:
+
+1. timeout and cancellation support for `OpenAICompatibleProvider`;
+2. first-class ambiguous intent results;
+3. expanded OpenAI-compatible provider failure-mode tests.
+
+Other possible future work must be clearly labeled as planned/under consideration until implemented.
+
 ## Release Documentation Rules
 
 Documentation must accurately describe:
@@ -114,7 +158,7 @@ Documentation must accurately describe:
 - the inference/runtime responsibility boundary;
 - structured-output requirements of the built-in provider;
 - result validation behavior;
-- known 0.1.0 limitations.
+- known 0.2.0 limitations.
 
 Do not describe Ollama, OpenAI, or another service as required by the core package. They are provider/runtime choices.
 

@@ -123,7 +123,7 @@ When a field has `values`, the value must be one of those canonical values or `n
 
 When a field has no `values`, the value may be a string, number, boolean, or `null`.
 
-`null` represents insufficient information or no usable value.
+`null` represents insufficient information or no usable value. The current result contract does not have a dedicated ambiguity state.
 
 ### `source`
 
@@ -185,6 +185,18 @@ const engine = new IntentEngine(provider);
 ```
 
 The library does not install, start, download, or manage the model runtime.
+
+The current 0.2.0 provider options are:
+
+```ts
+type OpenAICompatibleProviderOptions = {
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+};
+```
+
+Timeout, cancellation, retry, and fallback-provider controls are **not** part of the current 0.2.0 provider API.
 
 "OpenAI-compatible" refers to the API protocol. The model itself can be a local or hosted model as long as the endpoint supports the required structured-output behavior.
 
@@ -307,6 +319,8 @@ npm test
 
 These tests do not require a model.
 
+The unit suite currently covers schema generation and core validation cases such as canonical-value violations, missing fields, unexpected fields, invalid confidence, and malformed evidence entries.
+
 ### Ollama integration test
 
 The repository includes a real end-to-end test using an Ollama OpenAI-compatible endpoint:
@@ -330,6 +344,8 @@ The integration test prints the schema, input, and actual provider output, then 
 - exact evidence matches;
 - confidence ranges;
 - runtime validation.
+
+Provider HTTP/network failure coverage is still an area for improvement; see the planned work below.
 
 ### Package check
 
@@ -460,21 +476,35 @@ Environment-specific networking
 
 There is no automatic model/runtime management in the package.
 
-## Roadmap
+## Current limitations
 
-Future work should be driven by real application needs and developer feedback.
+The following are known limitations of the 0.2.0 implementation:
 
-Potential areas include:
+- the built-in provider has no timeout or cancellation options;
+- the built-in provider has no retry or automatic fallback policy;
+- the result contract has no first-class ambiguity state or candidate list;
+- confidence is provider-generated and range-validated, not independently calibrated;
+- the built-in provider requires the structured-output request shape described above;
+- provider HTTP/network failure behavior is not yet comprehensively covered by automated tests.
 
-- richer ambiguity/clarification behavior;
-- timeout, retry, and cancellation controls;
+These limitations describe the current implementation and are not promises about future behavior.
+
+## Planned / under consideration
+
+The following are future work, not current capabilities:
+
+- timeout and cancellation controls for `OpenAICompatibleProvider`;
+- a first-class ambiguity model for multiple valid interpretations;
+- broader provider failure-mode test coverage;
+- richer clarification/follow-up flows;
+- confidence calibration research;
 - broader provider compatibility;
 - batch extraction;
 - streaming;
 - observability;
 - framework integrations.
 
-These are possible future directions, not requirements of the current release.
+Specific implementation proposals should be tracked in GitHub issues and should not be treated as implemented until the source, tests, and documentation are updated.
 
 ## License
 

@@ -4,9 +4,13 @@
 
 This file is the authoritative record of finalized Intent Engine architectural decisions.
 
-`agent-files/Agents_Context.md` is short-term working context. It may contain hypotheses, implementation discoveries, open questions, and current work, but finalized architecture belongs here after Bryan explicitly approves it.
+`agent-files/Agents_Context.md` is short-term working context. It may contain implementation discoveries, open questions, and planned work, but it must not silently promote a proposal into finalized architecture.
 
-## Product Boundary
+Architectural changes require Bryan's explicit approval before being recorded here.
+
+---
+
+## 1. Product Boundary
 
 Intent Engine is a focused TypeScript/NPM library for schema-driven AI intent extraction.
 
@@ -17,13 +21,15 @@ The core package is responsible for:
 - validating the provider's runtime result;
 - returning the validated `IntentResult`.
 
-Intent Engine is **not** an AI runtime manager, hosted inference service, or model lifecycle manager.
+Intent Engine is **not** an AI runtime manager, hosted inference service, model lifecycle manager, or provider-operations platform.
 
-The application is responsible for choosing and operating the inference environment, including hosted APIs, local model runtimes, credentials, deployment, and environment-specific networking.
+The application is responsible for choosing and operating inference infrastructure, including hosted APIs, local model runtimes, credentials, deployment, and environment-specific networking.
 
-## Core Architecture
+---
 
-The finalized dependency flow is:
+## 2. Current 0.2.0 Architecture
+
+The implemented dependency flow is:
 
 ```text
 Application
@@ -37,13 +43,40 @@ Inference API / Runtime
 Model
 ```
 
-The core engine must remain independent of any single AI provider or model runtime.
+The provider boundary is the extension point between the core library and inference infrastructure.
 
-The provider boundary is the extension point between Intent Engine and inference infrastructure.
+The core engine does not depend on a specific model runtime.
 
-## Provider Abstraction
+---
 
-The public provider contract is:
+## 3. Intent Schema
+
+The current public schema is:
+
+```ts
+type IntentValue = string | number | boolean;
+
+type IntentField = {
+  field: string;
+  values?: readonly IntentValue[];
+};
+
+type IntentSchema = Record<string, IntentField>;
+```
+
+A field describes the intent dimension in natural language.
+
+When `values` is supplied, those values are the application's canonical vocabulary for that dimension.
+
+When `values` is omitted, the field is open-ended.
+
+The schema is converted into a JSON Schema for the built-in structured-output provider.
+
+---
+
+## 4. Provider Abstraction
+
+The current public provider contract is:
 
 ```ts
 type IntentProviderRequest = {
@@ -56,151 +89,228 @@ type IntentProvider = {
 };
 ```
 
-Providers return `unknown` at the abstraction boundary. Intent Engine performs runtime validation before exposing the result as an `IntentResult`.
-
-This prevents provider-specific TypeScript typing from being treated as proof that an external response is valid.
+Providers return `unknown` at the abstraction boundary. This is intentional: the engine must validate runtime data instead of trusting provider-specific TypeScript types.
 
 The first built-in provider is `OpenAICompatibleProvider`.
 
-It targets an OpenAI-compatible chat-completions endpoint and is specifically designed around the structured JSON Schema response format used by the implementation. "OpenAI-compatible" is not treated as a guarantee that every compatible service supports every feature; the built-in provider requires the structured-output capability it sends.
+It sends a chat-completions request to:
 
-## Structured Output
+```text
+{baseUrl}/chat/completions
+```
 
-The developer-facing schema is:
+using the configured model and the structured-output JSON Schema generated from the developer's intent schema.
+
+The current provider options are:
 
 ```ts
-type IntentSchema = {
-  [key: string]: string;
+type OpenAICompatibleProviderOptions = {
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
 };
 ```
 
-Each key represents an intent dimension and its value describes what should be extracted.
+The built-in provider requires the target endpoint to support the structured-output request shape used by the implementation, including `response_format.type = "json_schema"` and strict structured output.
 
-Intent Engine converts this schema into a JSON Schema representation for providers that support structured JSON output.
+"OpenAI-compatible" therefore describes the protocol target, not universal compatibility with every endpoint that implements only part of the API.
 
-The current generated result structure requires:
+---
+
+## 5. Result and Validation Boundary
+
+The current result contract is:
 
 ```ts
-type IntentResult = {
-  [key: string]: {
-    source: string[];
-    confidence: number;
-  };
-};
+type IntentResult = Record<string, {
+  value: IntentValue | null;
+  source: string[];
+  confidence: number;
+}>;
 ```
 
-The generated JSON Schema requires every requested dimension and disallows unexpected top-level result fields.
+The generated schema and runtime validation enforce the following:
 
-## Runtime Validation
+- every requested field is present;
+- no unexpected top-level result fields are present;
+- canonical values stay inside their configured allowed set;
+- open-ended values may be string, number, boolean, or `null`;
+- `source` is a string array;
+- `confidence` is a finite number between `0` and `1`.
 
-Runtime validation is part of the core engine rather than delegated to individual providers.
+`null` is the current representation for insufficient information or no usable value.
 
-A provider result is rejected when it is not an object, when schema dimensions are missing, when unexpected dimensions are present, or when a dimension has an invalid `source` array or `confidence` value.
+There is currently no first-class ambiguity state or candidate-value collection in the result contract.
 
-Confidence must be a finite number between `0` and `1`.
+Confidence is supplied by the provider and only type/range validated by Intent Engine. It is not treated by the architecture as a calibrated statistical probability.
 
-The `confidence` value is currently provider-generated. Intent Engine validates its type and range but does not treat it as a calibrated statistical probability.
+Malformed provider output must fail validation rather than silently becoming a valid-looking result.
 
-Malformed provider output must fail rather than silently becoming a valid-looking `IntentResult`.
+---
 
-## Environment Strategy
+## 6. Provider Error Boundary
 
-The core package is runtime-agnostic and does not require Node-specific APIs.
+The built-in provider currently surfaces:
 
-The package is published as ESM.
+- non-successful HTTP responses;
+- missing `choices[0].message.content`;
+- invalid JSON content.
 
-The built-in `OpenAICompatibleProvider` uses the environment's global `fetch`. Custom providers may use another transport.
+The engine then performs result validation on the parsed provider result.
 
-The same core API can therefore be used by:
+The current provider API does not expose built-in timeout, cancellation, retry, or automatic fallback controls.
 
-### Server / Live Applications
+This is a current implementation boundary, not a statement that these features are architecturally prohibited.
+
+---
+
+## 7. Runtime and Environment Strategy
+
+The core package is runtime-agnostic and does not use Node-specific APIs.
+
+The built-in HTTP provider uses global `fetch`.
+
+Applications own:
+
+- provider credentials;
+- inference endpoint/runtime installation;
+- model lifecycle;
+- deployment;
+- environment-specific networking;
+- browser authentication/CORS decisions.
+
+### Server applications
 
 ```text
-Application Backend
+Application backend
     ↓
 Intent Engine
     ↓
 Provider
     ↓
-Hosted API or Local Runtime
+Hosted API or local runtime
 ```
 
-Provider credentials and deployment configuration belong to the application.
+### Browser applications
 
-### Browser Applications
+The package can run in a browser environment that provides `fetch`, but direct browser inference depends on endpoint accessibility and an appropriate authentication/CORS design.
+
+Intent Engine does not provide a CORS proxy or secret-management layer. Private hosted API credentials should remain on the application's backend.
+
+### Desktop / Electron applications
 
 ```text
-Browser
-    ↓
-Application Backend
+Desktop application
     ↓
 Intent Engine
     ↓
 Provider
     ↓
-Inference
+Local or remote inference
 ```
 
-The core package contains no Node-specific dependency that prevents browser use. Direct browser inference is conditional on the selected provider endpoint supporting browser access and an appropriate authentication design.
+The application may separately package or manage a local runtime. Intent Engine does not install, download, start, detect, or manage model runtimes.
 
-Intent Engine does not provide a CORS proxy or secret-management layer.
+### Custom providers
 
-### Desktop / Electron Applications
+Applications may implement `IntentProvider` for a different inference service or transport. The core validation boundary remains unchanged.
 
-```text
-Desktop Application
-    ↓
-Intent Engine
-    ↓
-Provider
-    ↓
-Local or Remote Inference
-```
+---
 
-Desktop applications may separately package or manage local inference runtimes. Intent Engine does not automatically detect Electron, install models, download runtimes, start runtimes, or manage their lifecycle.
+## 8. Current Test Architecture
 
-## Extensibility
+The repository currently contains:
 
-Applications may implement `IntentProvider` for their own inference service, transport, or runtime.
+- unit tests for schema generation and runtime validation;
+- an integration test against an Ollama OpenAI-compatible endpoint;
+- build/package verification scripts.
 
-New providers should be added behind the provider boundary without changing the core `IntentEngine` contract unless a deliberate architectural change is approved.
+The unit tests cover canonical-value validation, missing fields, unexpected fields, confidence validation, and evidence-shape validation.
 
-Framework-specific integrations are not part of the core architecture.
+The Ollama integration path verifies real provider-backed extraction and checks canonical values, evidence, confidence, and runtime validation.
 
-## Error Boundary
+Provider transport/network failure coverage is not yet comprehensive.
 
-Provider transport/API failures and malformed provider output are surfaced as errors.
+Tests are part of the repository and are not part of the published npm package.
 
-The core engine is responsible for validating provider output after the provider returns.
+---
 
-Retry policies, timeout controls, cancellation, clarification flows, ambiguity models, telemetry, and automatic provider fallback are not part of the finalized 0.1.0 architecture.
+## 9. Current Public Boundary
 
-These may be considered in future architectural changes.
+The current public package exports:
 
-## Packaging Boundary
+- `IntentEngine`;
+- `IntentProvider`;
+- `IntentProviderRequest`;
+- `OpenAICompatibleProvider`;
+- `OpenAICompatibleProviderOptions`;
+- `IntentSchema`;
+- `IntentResult`;
+- `createIntentJsonSchema`.
 
-The npm package publishes the compiled `dist/` output, README, LICENSE, and package metadata.
+The package is ESM.
 
 The package does not bundle an AI model or model runtime.
 
-The application determines how inference infrastructure is installed, configured, and deployed.
+---
 
-## Finalized 0.1.0 Contract
+## 10. Explicitly Not Implemented in 0.2.0
 
-For the 0.1.0 release:
+The following are **not** current architecture capabilities:
 
-```text
-Intent Engine
-    = schema-driven intent extraction
+- timeout configuration;
+- request cancellation controls;
+- retry policies;
+- automatic provider fallback;
+- first-class ambiguity results;
+- built-in clarification/follow-up loops;
+- independently calibrated confidence;
+- streaming;
+- batch extraction;
+- telemetry/observability hooks;
+- framework-specific integrations;
+- automatic model/runtime management.
 
-IntentProvider
-    = inference boundary
+These items must not be described as implemented features.
 
-OpenAICompatibleProvider
-    = first built-in provider
+---
 
-Application
-    = runtime and deployment owner
-```
+## 11. Planned Architectural Work
 
-This separation is intentional. It allows the core package to remain small and provider-flexible while supporting server, browser, desktop, local-runtime, hosted-inference, and custom-provider deployment strategies without coupling the core to one runtime.
+The following are planned or tracked areas, not finalized 0.2.0 architecture:
+
+### Timeout and cancellation
+
+A future provider lifecycle design may add explicit timeout and cancellation controls to `OpenAICompatibleProvider`.
+
+The design should preserve existing behavior for callers that do not opt in. Retry semantics should be designed separately.
+
+### First-class ambiguity
+
+A future result-model design may distinguish ambiguity between multiple valid interpretations from unknown/insufficient information.
+
+The design still needs to determine how candidate values, evidence, and confidence should be represented.
+
+### Provider failure-mode coverage
+
+The test architecture should expand to cover relevant HTTP, network, malformed-response, and structured-output failure cases for the built-in provider.
+
+### Other future areas
+
+Other possible work includes clarification/follow-up flows, confidence calibration research, broader provider compatibility, streaming, batching, observability, and framework integrations.
+
+None of these are finalized architecture until explicitly approved and implemented.
+
+---
+
+## 12. Architectural Invariants
+
+The following are current architectural invariants:
+
+1. The core engine remains provider-flexible.
+2. Provider responses are treated as untrusted runtime data at the core boundary.
+3. Runtime validation remains a core-engine responsibility.
+4. Model/runtime lifecycle remains outside the core package.
+5. The npm package remains focused on developer-facing intent extraction rather than becoming an AI runtime manager.
+6. Documentation must distinguish implemented behavior from planned behavior.
+

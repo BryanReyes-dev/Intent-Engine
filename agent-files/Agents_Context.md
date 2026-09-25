@@ -4,7 +4,7 @@
 >
 > This file is intentionally non-secret and may be committed to the public repository.
 >
-> This is a living workspace for current context, implementation discoveries, release notes, preferences, open questions, and agent-to-agent communication. It is **not the authoritative architecture document**.
+> This is a living workspace for current context, implementation discoveries, release notes, open questions, and agent-to-agent communication. It is **not the authoritative architecture document**.
 >
 > Finalized architectural decisions belong in `agent-files/ARCHITECTURE.md` after Bryan explicitly approves them.
 
@@ -14,24 +14,19 @@
 
 This file is short-term working memory. Its value comes from high-signal information, not from accumulating every thought.
 
-## Hard rule: do not repeat context unnecessarily
+Before adding a note:
 
-Before adding a note, ask:
-
-- Is this information actually new?
-- Is it already documented elsewhere?
-- Can an existing note be updated instead?
-- Is it still relevant?
-- Does it belong in `ARCHITECTURE.md` instead?
-
-Prefer editing, consolidating, replacing, or removing existing context over appending another explanation.
+- check whether the information is already documented elsewhere;
+- update or consolidate an existing note instead of duplicating it;
+- remove stale release information rather than preserving historical implementation claims;
+- keep finalized architecture in `ARCHITECTURE.md`.
 
 ### Current policy
 
 - Preferred working size: approximately **5,000–10,000 tokens**.
 - Warning zone: **10,000–15,000 tokens**.
 - Hard ceiling: **15,000 tokens** unless Bryan explicitly changes this policy.
-- After a material edit, refresh the Context Metrics below.
+- Keep context focused on current implementation, active work, and clearly labeled future work.
 
 ### Context Metrics
 
@@ -40,7 +35,6 @@ Prefer editing, consolidating, replacing, or removing existing context over appe
 - **Preferred range:** 5,000–10,000 tokens
 - **Hard ceiling:** 15,000 tokens
 - **Status:** Healthy
-- **Measurement note:** Approximate until an appropriate exact tokenizer is available.
 
 ---
 
@@ -48,17 +42,15 @@ Prefer editing, consolidating, replacing, or removing existing context over appe
 
 Agents working on Intent Engine should read this file when beginning substantial work.
 
-Clearly distinguish:
+Always distinguish:
 
-- established facts
-- implementation discoveries
-- current release state
-- proposals
-- open questions
-- rejected ideas
-- future possibilities
+- **Current implementation** — verified in the repository.
+- **Known limitation** — a capability the current implementation does not provide.
+- **Planned work** — an approved or tracked future change that is not implemented yet.
+- **Open question** — a design/research question without a finalized answer.
+- **Rejected idea** — something intentionally not being pursued.
 
-Do not silently turn a hypothesis into a requirement or architectural decision.
+Do not silently turn a proposal into a requirement or architectural decision.
 
 ## Architecture authority rule
 
@@ -69,10 +61,8 @@ Do not silently turn a hypothesis into a requirement or architectural decision.
 If Bryan approves an architectural decision:
 
 1. Record the finalized architectural decision in `ARCHITECTURE.md`.
-2. Remove or reduce the corresponding architectural material from this file.
+2. Remove or reduce duplicate architectural material from this file.
 3. Keep only the short-term context needed for current work.
-
-Never silently promote a proposal into architecture.
 
 ---
 
@@ -80,7 +70,7 @@ Never silently promote a proposal into architecture.
 
 Intent Engine is a focused TypeScript/NPM library for schema-driven AI intent extraction.
 
-The core idea is:
+The current flow is:
 
 ```text
 Natural Language
@@ -94,15 +84,15 @@ IntentProvider
 Validated IntentResult
 ```
 
-The developer chooses the intent dimensions that matter to the application. Intent Engine handles the provider call and validates the returned structured data.
+The developer defines the intent dimensions that matter to the application. Intent Engine invokes the configured provider and validates the returned structured data.
 
-Intent Engine is a developer library, not a general-purpose AI assistant and not an AI runtime manager.
+Intent Engine is a developer library, not a general-purpose AI assistant, hosted inference service, or AI runtime manager.
 
 ---
 
-# 3. Current 0.1.0 Implementation
+# 3. Current 0.2.0 Implementation
 
-The current source contains:
+The current source includes:
 
 ```text
 src/
@@ -127,51 +117,50 @@ The public package exports:
 - `IntentResult`
 - `createIntentJsonSchema`
 
-The package is ESM and uses generated JavaScript plus TypeScript declarations from `dist/`.
+The package is ESM and produces compiled JavaScript plus TypeScript declarations in `dist/`.
 
----
+## Current schema behavior
 
-# 4. Core API
-
-The current API is:
+Each schema field contains:
 
 ```ts
-const provider = new OpenAICompatibleProvider({
-  baseUrl: "http://127.0.0.1:11434/v1",
-  model: "gemma4:26b",
-});
-
-const engine = new IntentEngine(provider);
-
-const result = await engine.extract(
-  {
-    location: "Where does the user want to live?",
-    feeling: "How should the home feel?",
-  },
-  "I want somewhere quiet near the city.",
-);
-```
-
-The schema is a map of dimension names to natural-language descriptions.
-
-The result is:
-
-```ts
-type IntentResult = {
-  [key: string]: {
-    source: string[];
-    confidence: number;
-  };
+type IntentField = {
+  field: string;
+  values?: readonly IntentValue[];
 };
 ```
 
-`source` contains extracted source text. `confidence` is provider-generated and is only range-validated by the core; it is not currently represented as a calibrated probability.
+When `values` is present, the generated JSON Schema restricts the value to those canonical values plus `null`.
+
+When `values` is omitted, the generated value schema accepts string, number, boolean, or `null`.
+
+## Current result behavior
+
+Each result field contains:
+
+```ts
+{
+  value: IntentValue | null;
+  source: string[];
+  confidence: number;
+}
+```
+
+The core validates:
+
+- all requested fields are present;
+- no unexpected result fields are returned;
+- canonical values stay inside their configured allowed set;
+- `source` is a string array;
+- `confidence` is finite and between `0` and `1`.
+
+The current result contract has no dedicated ambiguity state or candidate-value list.
 
 ---
 
-# 5. Provider Architecture
+# 4. Current Provider Behavior
 
-The engine depends on the exported `IntentProvider` abstraction:
+The public provider contract is:
 
 ```ts
 type IntentProviderRequest = {
@@ -184,324 +173,172 @@ type IntentProvider = {
 };
 ```
 
-The provider returns `unknown` so the engine can validate actual runtime data.
+Providers return `unknown` so the engine validates actual runtime data at the core boundary.
 
-The built-in provider is `OpenAICompatibleProvider`.
+The built-in `OpenAICompatibleProvider` currently:
 
-It:
+1. sends a POST request to `{baseUrl}/chat/completions`;
+2. supplies the configured model and chat messages;
+3. converts the schema to JSON Schema;
+4. requests strict structured JSON through `response_format`;
+5. parses `choices[0].message.content` as JSON;
+6. returns the parsed result to the engine for final validation.
 
-1. Sends a POST request to `{baseUrl}/chat/completions`.
-2. Supplies the model and chat messages.
-3. Converts the developer schema into JSON Schema.
-4. Requests strict structured JSON output through `response_format`.
-5. Parses the returned message content as JSON.
-6. Returns the raw parsed value to the engine.
-7. Lets the engine perform final validation.
+Current provider options are:
 
-The implementation currently assumes the target endpoint supports the required OpenAI-compatible structured-output request shape. It is not a generic adapter for every partial implementation of the OpenAI API.
+```ts
+type OpenAICompatibleProviderOptions = {
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+};
+```
+
+The provider currently throws for non-successful HTTP responses, missing message content, and invalid JSON.
+
+It does **not** currently expose built-in timeout, cancellation, retry, or automatic fallback controls.
+
+The provider also assumes the target endpoint supports the structured-output request shape used by the implementation. "OpenAI-compatible" does not mean every partial implementation of the API is supported.
 
 ---
 
-# 6. Environment and Runtime Usage
+# 5. Runtime and Environment Boundary
 
-The same package can be used in multiple deployment models because the runtime sits behind the provider boundary.
+The core package is runtime-agnostic and does not import Node-specific APIs.
 
-### Server / live service
+The built-in HTTP provider uses global `fetch`.
 
-```text
-Application backend
-    ↓
-IntentEngine
-    ↓
-OpenAICompatibleProvider or custom provider
-    ↓
-Hosted API or local runtime
-```
+Applications are responsible for:
 
-The backend owns provider credentials and deployment configuration.
+- the inference endpoint;
+- model/runtime installation and lifecycle;
+- provider credentials;
+- deployment;
+- environment-specific networking;
+- browser authentication/CORS decisions.
 
-### Browser
+Intent Engine does not install, download, start, detect, or manage model runtimes.
 
-```text
-Browser
-    ↓
-Application backend
-    ↓
-Intent Engine
-    ↓
-Provider
-    ↓
-Inference
-```
+Browser use is possible when the selected endpoint is reachable from the browser and the application's authentication design permits it. Private API credentials should remain on the application's backend.
 
-Direct browser use is possible because the core package does not use Node-specific APIs, but the selected inference endpoint must be browser-accessible and the application's authentication design must be appropriate.
-
-Intent Engine does not provide CORS proxying or secret handling.
-
-### Desktop / Electron
-
-```text
-Desktop application
-    ↓
-Intent Engine
-    ↓
-Provider
-    ↓
-Local or remote inference
-```
-
-The application may bundle and manage a local runtime separately. Intent Engine does not automatically detect Electron or start, install, download, or manage a model runtime.
-
-### Custom provider
-
-An application can implement `IntentProvider` when it has its own transport or AI service. The engine's runtime validation still applies.
+Custom providers can use a different transport while keeping the same core engine validation boundary.
 
 ---
 
-# 7. Runtime Requirements
+# 6. Current Test / Verification State
 
-There is intentionally no Node `engines` field in `package.json` because the core package does not require Node-specific APIs.
+The repository contains:
 
-Important environment notes:
+- unit tests for JSON Schema generation and core validation;
+- an Ollama integration test using an OpenAI-compatible endpoint;
+- build and package-check scripts.
 
-- The published package is ESM.
-- The core engine does not directly depend on `fetch`.
-- `OpenAICompatibleProvider` uses global `fetch`.
-- Browser environments normally provide `fetch`.
-- Server environments must provide a compatible global `fetch` implementation or use a custom provider with another transport.
+The unit tests currently cover cases including:
 
-Do not reintroduce a Node version restriction without an explicit reason and architectural review.
-
----
-
-# 8. Validation Behavior
-
-`validateIntentResult()` currently rejects:
-
-- non-object provider results;
-- arrays returned as top-level results;
+- canonical values outside the allowed set;
 - missing schema fields;
 - unexpected result fields;
-- non-object dimension values;
-- non-array `source` fields;
-- non-string entries inside `source`;
-- non-number confidence values;
-- non-finite confidence values;
-- confidence values outside `0` through `1`.
+- invalid confidence values;
+- malformed evidence entries.
 
-The goal is to fail closed on malformed provider output rather than return an invalid `IntentResult`.
+The Ollama integration path verifies real provider-backed extraction and validates canonical values, evidence, confidence, and the final runtime result.
+
+Provider HTTP/network failure coverage is less comprehensive than the schema/validation coverage and is a tracked improvement area.
 
 ---
 
-# 9. Error Behavior in 0.1.0
+# 7. Known Limitations — Current 0.2.0
 
-The built-in provider currently reports:
+These are facts about the current implementation:
 
-- non-successful HTTP responses;
-- missing `choices[0].message.content`;
-- invalid JSON content.
+- no built-in timeout configuration;
+- no built-in request cancellation/AbortSignal option;
+- no built-in retry policy;
+- no automatic provider fallback;
+- no first-class ambiguity result model;
+- no built-in clarification/follow-up loop;
+- confidence is provider-generated and range-validated rather than independently calibrated;
+- OpenAI-compatible provider support is limited to endpoints supporting the structured-output request shape;
+- provider failure-mode tests are not yet comprehensive.
 
-The engine then validates the parsed provider result.
-
-Not currently implemented:
-
-- retry policies;
-- timeout configuration;
-- cancellation/AbortSignal configuration;
-- automatic fallback providers;
-- clarification loops;
-- richer ambiguity objects;
-- telemetry or observability hooks.
-
-These are follow-up possibilities rather than current capabilities.
+Do not document any of these as implemented capabilities.
 
 ---
 
-# 10. Packaging and Distribution
+# 8. Planned Work / Tracked Issues
 
-`package.json` currently publishes:
+The following are future changes and must remain distinct from current implementation:
 
-```text
-dist/
-README.md
-LICENSE
-package.json
-```
+1. **Timeout and cancellation support for `OpenAICompatibleProvider`**
+   - Add explicit request lifecycle controls without changing existing behavior for callers that do not opt in.
+   - Retry behavior is a separate design decision.
 
-The package uses:
+2. **First-class ambiguous intent results**
+   - Design how ambiguity between multiple valid interpretations should differ from unknown/insufficient information.
+   - Candidate values, evidence, and confidence handling should be decided as part of the design rather than assumed.
 
-- `main: ./dist/index.js`
-- `types: ./dist/index.d.ts`
-- an ESM `exports` entry
-- `sideEffects: false`
-- `prepublishOnly: npm run build`
+3. **OpenAI-compatible provider failure-mode test coverage**
+   - Expand automated coverage for relevant HTTP, network, malformed-response, and structured-output failure cases.
 
-Repository development commands:
+These items are planned/tracked work. They are not part of 0.2.0 until implemented, tested, and documented.
+
+---
+
+# 9. Open Research Questions
+
+These questions are intentionally unresolved:
+
+- Should confidence eventually be independently calibrated rather than accepted directly from the provider?
+- How should clarification questions interact with an ambiguity result?
+- Which OpenAI-compatible structured-output variations should the built-in provider support?
+- Which provider errors should be retried automatically, and under what caller-controlled policy?
+- Should provider lifecycle controls belong directly in `OpenAICompatibleProviderOptions` or in a broader transport abstraction?
+
+Do not record answers here as finalized architecture without explicit approval.
+
+---
+
+# 10. Packaging / Release Notes
+
+The package is published as ESM with compiled output and TypeScript declarations.
+
+The npm package contains the intended public distribution files rather than the repository's tests and agent documentation.
+
+Development verification includes:
 
 ```bash
-npm install
 npm run build
 npm run check
-```
-
-Release verification:
-
-```bash
 npm publish --dry-run
 ```
 
-After publication, the most important external verification is a clean consumer project that runs:
-
-```bash
-npm install intent-engine
-```
-
-and imports the published package rather than a local tarball or repository checkout.
+A real provider/model path should be verified before a release is treated as production-ready.
 
 ---
 
-# 11. Tests and Verification State
+# 11. Important Files
 
-0.1.0 does not yet contain a dedicated automated test suite.
-
-The release has instead been manually verified through:
-
-- successful TypeScript build;
-- successful npm package dry run;
-- a separate consumer project using the package from plain HTML/CSS/JavaScript;
-- real provider-backed extraction using a local OpenAI-compatible Ollama endpoint and a real model;
-- successful schema/result validation on the returned data.
-
-Automated tests are a post-0.1.0 priority, not a claim of current coverage.
-
----
-
-# 12. Release and Usage Contract
-
-For 0.1.0, the following statements are safe to treat as current:
-
-```text
-Intent Engine = intent extraction library
-IntentProvider = inference boundary
-OpenAICompatibleProvider = first built-in provider
-Application = owner of runtime/deployment strategy
-```
-
-Do not describe 0.1.0 as:
-
-- a bundled model runtime;
-- an Ollama manager;
-- an automatic environment detector;
-- a hosted inference service;
-- a browser proxy;
-- a multi-provider SDK.
-
-Those are future possibilities, not current capabilities.
+- `README.md` — human-facing package documentation; current capabilities only plus clearly labeled limitations and future work.
+- `agent-files/ARCHITECTURE.md` — authoritative finalized architecture.
+- `agent-files/AGENTS.md` — agent workflow and repository rules.
+- `agent-files/Agents_Context.md` — short-term implementation context and tracked work.
+- `src/engine.ts` — core extraction orchestration.
+- `src/schema.ts` — JSON Schema generation.
+- `src/validation.ts` — runtime result validation.
+- `src/providers/openai-compatible.ts` — built-in OpenAI-compatible HTTP provider.
+- `tests/unit/intent-engine.test.mjs` — core unit coverage.
+- `tests/integration/ollama.test.mjs` — real Ollama integration coverage.
 
 ---
 
-# 13. Current Release Goal
+# 12. Agent Working Rule
 
-The immediate goal is to publish 0.1.0 and test the package exactly as an external developer would use it.
+When documenting or implementing a change:
 
-Target sequence:
+1. inspect the source and tests first;
+2. state whether the behavior is current, planned, or unresolved;
+3. keep README claims aligned with the implementation;
+4. keep finalized architecture separate from proposals;
+5. avoid unrelated changes;
+6. do not mark planned work as complete until source and tests verify it.
 
-```text
-Repository synchronized
-      ↓
-Documentation synchronized
-      ↓
-npm publish 0.1.0
-      ↓
-Clean project: npm install intent-engine
-      ↓
-Import published package
-      ↓
-Run a real extraction
-      ↓
-Record actual issues
-      ↓
-Decide 0.2.0 scope from evidence
-```
-
-Do not expand the provider matrix before the first published package has been externally exercised.
-
----
-
-# 14. Open Questions for Post-0.1.0
-
-These remain open until evidence or explicit architecture decisions resolve them:
-
-- Should confidence eventually be independent of model self-reporting?
-- Should the provider abstraction accept cancellation/timeouts?
-- Should official providers be added for vendors that do not expose the required compatible API?
-- Should there be a first-party local-runtime provider/manager?
-- Should ambiguity be a first-class result type?
-- Should the schema eventually support Zod, JSON Schema, or another formal schema system?
-- Should the browser experience include a dedicated backend/proxy package?
-- How much provider-specific configuration should be exposed?
-- Which improvements are justified by real developer usage?
-
-These are questions, not commitments.
-
----
-
-# 15. Product Direction
-
-Intent Engine should remain a focused developer-infrastructure project.
-
-The immediate objective is usefulness, installability, recognition, and real developer feedback.
-
-Avoid expanding it into a runtime manager, AI assistant, or large framework until external evidence justifies that scope.
-
----
-
-# 16. Agent Communication
-
-## ChatGPT
-
-Current understanding:
-
-- 0.1.0 is the first provider-backed release.
-- The core engine is provider-flexible.
-- The built-in provider targets an OpenAI-compatible structured-output API.
-- The package is ESM.
-- Runtime management belongs to the application, not the core package.
-- The immediate goal is clean publication and a true post-publication consumer test.
-- Feature expansion should follow real developer feedback.
-
-### Future thoughts
-
-_Add only genuinely new observations._
-
-## Codex
-
-Use this section for implementation discoveries that another agent needs.
-
-### Current thoughts
-
-_Add implementation discoveries here._
-
-### Repository observations
-
-_Add useful observations about the current implementation here._
-
-### Concerns / risks
-
-_Add implementation or architecture concerns here. If a concern becomes a finalized architectural decision, ask Bryan before moving it into `ARCHITECTURE.md`._
-
-### Future thoughts
-
-_Add ideas worth discussing before implementation._
-
----
-
-# 17. Maintenance Reminder for Future Agents
-
-**Do not let this file become a second architecture document.**
-
-When an idea becomes finalized architecture, ask Bryan for approval and move the authoritative decision to `agent-files/ARCHITECTURE.md`.
-
-When the same context changes, update the existing note rather than appending another explanation.
-
-The goal is for `Agents_Context.md` to remain compact, high-signal, and current while `ARCHITECTURE.md` remains the authoritative record of deliberate architectural decisions.
